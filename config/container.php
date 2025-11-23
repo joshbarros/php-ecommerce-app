@@ -15,6 +15,8 @@ use App\Repositories\Interfaces\OrderRepositoryInterface;
 use App\Repositories\OrderRepository;
 use App\Repositories\Interfaces\ReviewRepositoryInterface;
 use App\Repositories\ReviewRepository;
+use App\Repositories\Interfaces\CouponRepositoryInterface;
+use App\Repositories\CouponRepository;
 use App\Services\AuthService;
 use App\Services\ProductService;
 use App\Services\CategoryService;
@@ -23,6 +25,7 @@ use App\Services\CheckoutService;
 use App\Services\PaymentService;
 use App\Services\EmailService;
 use App\Services\ReviewService;
+use App\Services\CouponService;
 use League\Route\Router;
 use League\Route\Strategy\ApplicationStrategy;
 use Monolog\Handler\RotatingFileHandler;
@@ -131,6 +134,10 @@ return [
         return new ReviewRepository($c->get(PDO::class));
     },
 
+    CouponRepositoryInterface::class => function (ContainerInterface $c) {
+        return new CouponRepository($c->get(PDO::class));
+    },
+
     // ==================================
     // Services
     // ==================================
@@ -189,6 +196,13 @@ return [
     ReviewService::class => function (ContainerInterface $c) {
         return new ReviewService(
             $c->get(ReviewRepositoryInterface::class),
+            $c->get(LoggerInterface::class)
+        );
+    },
+
+    CouponService::class => function (ContainerInterface $c) {
+        return new CouponService(
+            $c->get(CouponRepositoryInterface::class),
             $c->get(LoggerInterface::class)
         );
     },
