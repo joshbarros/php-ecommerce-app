@@ -1,0 +1,39 @@
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+/vendor/
+composer.lock
+
+# Storage
+/storage/logs/*.log
+/storage/cache/*
+!/storage/cache/.gitkeep
+/storage/sessions/*
+!/storage/sessions/.gitkeep
+/storage/uploads/*
+!/storage/uploads/.gitkeep
+
+# Testing
+.phpunit.cache/
+coverage/
+tests/testdox.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Docker
+docker-compose.override.yml
+
+# Build artifacts
+/public/build/
+/node_modules/
+npm-debug.log
+yarn-error.log
