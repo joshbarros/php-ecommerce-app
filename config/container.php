@@ -3,6 +3,9 @@
 declare(strict_types=1);
 
 use App\Database\Connection;
+use App\Repositories\Interfaces\UserRepositoryInterface;
+use App\Repositories\UserRepository;
+use App\Services\AuthService;
 use League\Route\Router;
 use League\Route\Strategy\ApplicationStrategy;
 use Monolog\Handler\RotatingFileHandler;
@@ -81,5 +84,24 @@ return [
         }
 
         return $redis;
+    },
+
+    // ==================================
+    // Repositories
+    // ==================================
+
+    UserRepositoryInterface::class => function (ContainerInterface $c) {
+        return new UserRepository($c->get(PDO::class));
+    },
+
+    // ==================================
+    // Services
+    // ==================================
+
+    AuthService::class => function (ContainerInterface $c) {
+        return new AuthService(
+            $c->get(UserRepositoryInterface::class),
+            $c->get(LoggerInterface::class)
+        );
     },
 ];
