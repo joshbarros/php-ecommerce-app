@@ -18,6 +18,7 @@ use App\Services\ProductService;
 use App\Services\CategoryService;
 use App\Services\CartService;
 use App\Services\CheckoutService;
+use App\Services\PaymentService;
 use League\Route\Router;
 use League\Route\Strategy\ApplicationStrategy;
 use Monolog\Handler\RotatingFileHandler;
@@ -160,6 +161,13 @@ return [
             $c->get(OrderRepositoryInterface::class),
             $c->get(CartRepositoryInterface::class),
             $c->get(ProductRepositoryInterface::class),
+            $c->get(LoggerInterface::class)
+        );
+    },
+
+    PaymentService::class => function (ContainerInterface $c) {
+        return new PaymentService(
+            $c->get(OrderRepositoryInterface::class),
             $c->get(LoggerInterface::class)
         );
     },

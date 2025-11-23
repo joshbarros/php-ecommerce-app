@@ -9,6 +9,7 @@ use App\Helpers\CsrfHelper;
 use App\Helpers\SessionHelper;
 use App\Services\CartService;
 use App\Services\CheckoutService;
+use App\Services\PaymentService;
 use Laminas\Diactoros\Response\HtmlResponse;
 use Laminas\Diactoros\Response\RedirectResponse;
 use Psr\Http\Message\ResponseInterface;
@@ -20,6 +21,7 @@ final class CheckoutController
     public function __construct(
         private readonly CheckoutService $checkoutService,
         private readonly CartService $cartService,
+        private readonly PaymentService $paymentService,
         private readonly LoggerInterface $logger
     ) {
     }
@@ -135,9 +137,9 @@ final class CheckoutController
             );
 
             CsrfHelper::regenerateToken();
-            SessionHelper::flash('success', 'Order placed successfully!');
 
-            return new RedirectResponse('/checkout/confirmation/' . $order['uuid']);
+            // Redirect to payment page
+            return new RedirectResponse('/checkout/payment/' . $order['uuid']);
 
         } catch (ValidationException $e) {
             SessionHelper::flash('error', $e->getMessage());
@@ -179,6 +181,64 @@ final class CheckoutController
         }
 
         return new HtmlResponse($this->renderConfirmation($order));
+    }
+
+    /**
+     * Show payment page
+     */
+    public function payment(ServerRequestInterface $request): ResponseInterface
+    {
+        $uuid = $request->getAttribute('uuid');
+
+        if (!$uuid) {
+            return new RedirectResponse('/');
+        }
+
+        $order = $this->checkoutService->getOrderByUuid($uuid);
+
+        if (!$order) {
+            SessionHelper::flash('error', 'Order not found');
+            return new RedirectResponse('/');
+        }
+
+        // Verify order belongs to current user (if logged in)
+        $userId = SessionHelper::get('user_id');
+        if ($userId && $order['user_id'] != $userId) {
+            SessionHelper::flash('error', 'Order not found');
+            return new RedirectResponse('/');
+        }
+
+        // Check if payment already completed
+        if ($order['payment_status'] === 'paid') {
+            return new RedirectResponse('/checkout/confirmation/' . $uuid);
+        }
+
+        // Check if Stripe is configured
+        if (!$this->paymentService->isConfigured()) {
+            // Skip payment if Stripe not configured (for testing)
+            $this->logger->warning('Stripe not configured, marking order as paid');
+
+            // Update order to mark as paid
+            $this->checkoutService->updateOrderStatus($order['id'], 'processing');
+
+            SessionHelper::flash('success', 'Order placed successfully!');
+            return new RedirectResponse('/checkout/confirmation/' . $uuid);
+        }
+
+        // Create payment intent
+        try {
+            $paymentIntent = $this->paymentService->createPaymentIntent($order);
+
+            return new HtmlResponse($this->renderPayment($order, $paymentIntent));
+        } catch (\Exception $e) {
+            $this->logger->error('Payment intent creation failed', [
+                'order_id' => $order['id'],
+                'error' => $e->getMessage()
+            ]);
+
+            SessionHelper::flash('error', 'Payment processing failed. Please try again.');
+            return new RedirectResponse('/account/orders/' . $uuid);
+        }
     }
 
     /**
@@ -695,6 +755,174 @@ final class CheckoutController
             </div>
         </div>
     </div>
+</body>
+</html>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Render payment page
+     */
+    private function renderPayment(array $order, array $paymentIntent): string
+    {
+        $publishableKey = $this->paymentService->getPublishableKey();
+
+        ob_start();
+        ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Payment - PHP E-Commerce</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container { max-width: 600px; margin: 0 auto; }
+        .payment-box {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        h1 { color: #333; margin-bottom: 10px; }
+        .order-number {
+            font-size: 18px;
+            color: #667eea;
+            font-weight: 600;
+            margin-bottom: 30px;
+        }
+        .amount {
+            font-size: 36px;
+            font-weight: 700;
+            color: #764ba2;
+            margin: 20px 0;
+            text-align: center;
+        }
+        #payment-element {
+            margin: 30px 0;
+        }
+        .btn {
+            width: 100%;
+            padding: 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        #error-message {
+            color: #721c24;
+            background: #f8d7da;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 20px;
+            display: none;
+        }
+        .spinner {
+            display: none;
+            margin: 0 auto;
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .secure-badge {
+            text-align: center;
+            margin-top: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="payment-box">
+            <h1>Complete Your Payment</h1>
+            <div class="order-number">Order #<?= htmlspecialchars($order['order_number']) ?></div>
+
+            <div class="amount">$<?= number_format($order['total'], 2) ?></div>
+
+            <form id="payment-form">
+                <div id="payment-element"></div>
+                <button id="submit-button" class="btn btn-primary">
+                    <span id="button-text">Pay Now</span>
+                    <div class="spinner" id="spinner"></div>
+                </button>
+                <div id="error-message"></div>
+            </form>
+
+            <div class="secure-badge">
+                🔒 Secure payment powered by Stripe
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const stripe = Stripe('<?= $publishableKey ?>');
+        const clientSecret = '<?= $paymentIntent['client_secret'] ?>';
+
+        const elements = stripe.elements({ clientSecret });
+        const paymentElement = elements.create('payment');
+        paymentElement.mount('#payment-element');
+
+        const form = document.getElementById('payment-form');
+        const submitButton = document.getElementById('submit-button');
+        const errorMessage = document.getElementById('error-message');
+        const spinner = document.getElementById('spinner');
+        const buttonText = document.getElementById('button-text');
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            submitButton.disabled = true;
+            spinner.style.display = 'block';
+            buttonText.style.display = 'none';
+            errorMessage.style.display = 'none';
+
+            const { error } = await stripe.confirmPayment({
+                elements,
+                confirmParams: {
+                    return_url: window.location.origin + '/checkout/confirmation/<?= $order['uuid'] ?>',
+                },
+            });
+
+            if (error) {
+                errorMessage.textContent = error.message;
+                errorMessage.style.display = 'block';
+                submitButton.disabled = false;
+                spinner.style.display = 'none';
+                buttonText.style.display = 'inline';
+            }
+        });
+    </script>
 </body>
 </html>
         <?php
