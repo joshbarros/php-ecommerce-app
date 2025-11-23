@@ -7,6 +7,7 @@ namespace App\Controllers\Web;
 use App\Exceptions\NotFoundException;
 use App\Services\CategoryService;
 use App\Services\ProductService;
+use App\Helpers\CsrfHelper;
 use App\Helpers\SessionHelper;
 use Laminas\Diactoros\Response\HtmlResponse;
 use Psr\Http\Message\ResponseInterface;
@@ -306,6 +307,7 @@ HTML;
      */
     private function renderProductDetail(array $product, array $relatedProducts): string
     {
+        $csrfToken = CsrfHelper::getToken();
         $name = htmlspecialchars($product['name']);
         $price = $this->productService->formatPrice($product['price']);
         $comparePrice = $product['compare_price']
@@ -451,7 +453,8 @@ HTML;
                     {$description}
                 </div>
 
-                <form action="/cart/add" method="POST">
+                <form action="/cart/add" method="POST" id="add-to-cart-form">
+                    <input type="hidden" name="csrf_token" value="{$csrfToken}">
                     <input type="hidden" name="product_id" value="{$product['id']}">
                     <input type="hidden" name="quantity" value="1">
                     {$addToCartButton}

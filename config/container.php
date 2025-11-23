@@ -9,9 +9,12 @@ use App\Repositories\Interfaces\ProductRepositoryInterface;
 use App\Repositories\ProductRepository;
 use App\Repositories\Interfaces\CategoryRepositoryInterface;
 use App\Repositories\CategoryRepository;
+use App\Repositories\Interfaces\CartRepositoryInterface;
+use App\Repositories\CartRepository;
 use App\Services\AuthService;
 use App\Services\ProductService;
 use App\Services\CategoryService;
+use App\Services\CartService;
 use League\Route\Router;
 use League\Route\Strategy\ApplicationStrategy;
 use Monolog\Handler\RotatingFileHandler;
@@ -108,6 +111,10 @@ return [
         return new CategoryRepository($c->get(PDO::class));
     },
 
+    CartRepositoryInterface::class => function (ContainerInterface $c) {
+        return new CartRepository($c->get(PDO::class));
+    },
+
     // ==================================
     // Services
     // ==================================
@@ -129,6 +136,14 @@ return [
     CategoryService::class => function (ContainerInterface $c) {
         return new CategoryService(
             $c->get(CategoryRepositoryInterface::class),
+            $c->get(LoggerInterface::class)
+        );
+    },
+
+    CartService::class => function (ContainerInterface $c) {
+        return new CartService(
+            $c->get(CartRepositoryInterface::class),
+            $c->get(ProductRepositoryInterface::class),
             $c->get(LoggerInterface::class)
         );
     },

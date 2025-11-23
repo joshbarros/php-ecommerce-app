@@ -9,6 +9,7 @@ use App\Exceptions\ValidationException;
 use App\Helpers\CsrfHelper;
 use App\Helpers\SessionHelper;
 use App\Services\AuthService;
+use App\Services\CartService;
 use Laminas\Diactoros\Response\HtmlResponse;
 use Laminas\Diactoros\Response\RedirectResponse;
 use Psr\Http\Message\ResponseInterface;
@@ -19,6 +20,7 @@ final class AuthController
 {
     public function __construct(
         private readonly AuthService $authService,
+        private readonly CartService $cartService,
         private readonly LoggerInterface $logger
     ) {
     }
@@ -61,6 +63,17 @@ final class AuthController
 
             // Attempt login
             $user = $this->authService->login($email, $password, $remember);
+
+            // Merge guest cart if exists
+            try {
+                $guestSessionId = session_id();
+                $this->cartService->mergeGuestCart($guestSessionId, $user['id']);
+            } catch (\Exception $e) {
+                $this->logger->error('Failed to merge guest cart', [
+                    'user_id' => $user['id'],
+                    'error' => $e->getMessage()
+                ]);
+            }
 
             // Regenerate CSRF token after successful login
             CsrfHelper::regenerateToken();

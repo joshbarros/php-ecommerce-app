@@ -38,6 +38,7 @@ $router->map('POST', '/cart/add', [CartController::class, 'add']);
 $router->map('POST', '/cart/update', [CartController::class, 'update']);
 $router->map('POST', '/cart/remove', [CartController::class, 'remove']);
 $router->map('POST', '/cart/clear', [CartController::class, 'clear']);
+$router->map('GET', '/cart/count', [CartController::class, 'count']);
 
 // Health check endpoint
 $router->map('GET', '/health', function () {
