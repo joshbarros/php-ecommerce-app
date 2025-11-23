@@ -1,0 +1,116 @@
+# Production PHP Dockerfile
+FROM php:8.3-fpm-alpine
+
+# Metadata
+LABEL maintainer="your-email@example.com"
+LABEL description="Production PHP-FPM for E-Commerce Application"
+
+# Install system dependencies
+RUN apk add --no-cache \
+    postgresql-dev \
+    libzip-dev \
+    libpng-dev \
+    libjpeg-turbo-dev \
+    freetype-dev \
+    oniguruma-dev \
+    icu-dev \
+    libxml2-dev \
+    linux-headers \
+    $PHPIZE_DEPS \
+    && rm -rf /var/cache/apk/*
+
+# Install PHP extensions
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
+    && docker-php-ext-install -j$(nproc) \
+        pdo \
+        pdo_pgsql \
+        zip \
+        gd \
+        mbstring \
+        intl \
+        opcache \
+        bcmath \
+        xml \
+        soap
+
+# Install Redis extension
+RUN pecl install redis-6.0.2 \
+    && docker-php-ext-enable redis \
+    && rm -rf /tmp/pear
+
+# Install Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Production PHP configuration
+RUN { \
+    echo 'display_errors = Off'; \
+    echo 'log_errors = On'; \
+    echo 'error_log = /var/log/php-fpm/error.log'; \
+    echo 'error_reporting = E_ALL & ~E_DEPRECATED & ~E_STRICT'; \
+    echo 'memory_limit = 256M'; \
+    echo 'max_execution_time = 60'; \
+    echo 'max_input_time = 60'; \
+    echo 'post_max_size = 10M'; \
+    echo 'upload_max_filesize = 10M'; \
+    echo 'max_file_uploads = 20'; \
+    echo 'date.timezone = UTC'; \
+    echo 'expose_php = Off'; \
+    echo 'session.cookie_httponly = 1'; \
+    echo 'session.cookie_secure = 1'; \
+    echo 'session.cookie_samesite = "Lax"'; \
+    echo 'session.use_strict_mode = 1'; \
+} > /usr/local/etc/php/conf.d/production.ini
+
+# OPcache configuration for production
+RUN { \
+    echo 'opcache.enable=1'; \
+    echo 'opcache.enable_cli=1'; \
+    echo 'opcache.memory_consumption=256'; \
+    echo 'opcache.interned_strings_buffer=16'; \
+    echo 'opcache.max_accelerated_files=20000'; \
+    echo 'opcache.validate_timestamps=0'; \
+    echo 'opcache.revalidate_freq=0'; \
+    echo 'opcache.fast_shutdown=1'; \
+} > /usr/local/etc/php/conf.d/opcache.ini
+
+# Create log directory
+RUN mkdir -p /var/log/php-fpm \
+    && chown -R www-data:www-data /var/log/php-fpm
+
+# Set working directory
+WORKDIR /var/www
+
+# Copy application files
+COPY --chown=www-data:www-data . .
+
+# Install production dependencies
+RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist \
+    && composer dump-autoload --optimize --classmap-authoritative
+
+# Set permissions
+RUN chown -R www-data:www-data /var/www \
+    && chmod -R 755 /var/www \
+    && chmod -R 775 /var/www/storage
+
+# Security: Remove sensitive files
+RUN rm -rf \
+    .git \
+    .github \
+    tests \
+    .env.example \
+    README.md \
+    docker-compose.yml \
+    phpunit.xml
+
+# Switch to non-root user
+USER www-data
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
+    CMD php-fpm-healthcheck || exit 1
+
+# Expose PHP-FPM port
+EXPOSE 9000
+
+# Start PHP-FPM
+CMD ["php-fpm"]

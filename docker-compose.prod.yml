@@ -1,0 +1,206 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # Nginx Web Server
+  # ============================================
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: ecommerce-nginx-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./public:/var/www/public:ro
+      - ./docker/nginx/production.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+      - nginx-logs:/var/log/nginx
+    depends_on:
+      - php
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================
+  # PHP-FPM Application Server
+  # ============================================
+  php:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile.prod
+    container_name: ecommerce-php-prod
+    restart: unless-stopped
+    volumes:
+      - ./:/var/www:ro
+      - app-storage:/var/www/storage
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm -t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: ecommerce-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d:ro
+      - ./docker/postgres/postgresql.prod.conf:/etc/postgresql/postgresql.conf:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    command: postgres -c config_file=/etc/postgresql/postgresql.conf
+
+  # ============================================
+  # Redis Cache & Session Storage
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: ecommerce-redis-prod
+    restart: unless-stopped
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis-data:/data
+    ports:
+      - "127.0.0.1:6379:6379"
+    networks:
+      - ecommerce-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ============================================
+  # Backup Service (Automated Backups)
+  # ============================================
+  backup:
+    image: postgres:16-alpine
+    container_name: ecommerce-backup
+    restart: unless-stopped
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${DB_NAME}
+      PGUSER: ${DB_USER}
+      PGPASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./backups:/backups
+      - ./docker/scripts/backup.sh:/backup.sh:ro
+    networks:
+      - ecommerce-network
+    command: sh -c "chmod +x /backup.sh && crond -f -l 2"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ============================================
+  # Monitoring - Prometheus
+  # ============================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ecommerce-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./docker/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks:
+      - ecommerce-network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+
+  # ============================================
+  # Monitoring - Grafana
+  # ============================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: ecommerce-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./docker/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    networks:
+      - ecommerce-network
+    depends_on:
+      - prometheus
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  ecommerce-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# ============================================
+# Volumes (Persistent Data)
+# ============================================
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  app-storage:
+    driver: local
+  nginx-logs:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
