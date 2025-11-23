@@ -7,6 +7,7 @@ use App\Controllers\Web\ProductController;
 use App\Controllers\Web\AuthController;
 use App\Controllers\Web\CartController;
 use App\Controllers\Web\CheckoutController;
+use App\Controllers\Web\AccountController;
 use League\Route\Router;
 
 /**
@@ -45,6 +46,11 @@ $router->map('GET', '/cart/count', [CartController::class, 'count']);
 $router->map('GET', '/checkout', [CheckoutController::class, 'index']);
 $router->map('POST', '/checkout/process', [CheckoutController::class, 'process']);
 $router->map('GET', '/checkout/confirmation/{uuid:uuid}', [CheckoutController::class, 'confirmation']);
+
+// Account (requires authentication)
+$router->map('GET', '/account', [AccountController::class, 'index']);
+$router->map('GET', '/account/orders', [AccountController::class, 'orders']);
+$router->map('GET', '/account/orders/{uuid:uuid}', [AccountController::class, 'orderDetail']);
 
 // Health check endpoint
 $router->map('GET', '/health', function () {
