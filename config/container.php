@@ -5,7 +5,13 @@ declare(strict_types=1);
 use App\Database\Connection;
 use App\Repositories\Interfaces\UserRepositoryInterface;
 use App\Repositories\UserRepository;
+use App\Repositories\Interfaces\ProductRepositoryInterface;
+use App\Repositories\ProductRepository;
+use App\Repositories\Interfaces\CategoryRepositoryInterface;
+use App\Repositories\CategoryRepository;
 use App\Services\AuthService;
+use App\Services\ProductService;
+use App\Services\CategoryService;
 use League\Route\Router;
 use League\Route\Strategy\ApplicationStrategy;
 use Monolog\Handler\RotatingFileHandler;
@@ -94,6 +100,14 @@ return [
         return new UserRepository($c->get(PDO::class));
     },
 
+    ProductRepositoryInterface::class => function (ContainerInterface $c) {
+        return new ProductRepository($c->get(PDO::class));
+    },
+
+    CategoryRepositoryInterface::class => function (ContainerInterface $c) {
+        return new CategoryRepository($c->get(PDO::class));
+    },
+
     // ==================================
     // Services
     // ==================================
@@ -101,6 +115,20 @@ return [
     AuthService::class => function (ContainerInterface $c) {
         return new AuthService(
             $c->get(UserRepositoryInterface::class),
+            $c->get(LoggerInterface::class)
+        );
+    },
+
+    ProductService::class => function (ContainerInterface $c) {
+        return new ProductService(
+            $c->get(ProductRepositoryInterface::class),
+            $c->get(LoggerInterface::class)
+        );
+    },
+
+    CategoryService::class => function (ContainerInterface $c) {
+        return new CategoryService(
+            $c->get(CategoryRepositoryInterface::class),
             $c->get(LoggerInterface::class)
         );
     },
