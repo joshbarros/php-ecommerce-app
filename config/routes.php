@@ -8,7 +8,9 @@ use App\Controllers\Web\AuthController;
 use App\Controllers\Web\CartController;
 use App\Controllers\Web\CheckoutController;
 use App\Controllers\Web\AccountController;
+use App\Controllers\Admin\AdminController;
 use App\Controllers\Api\WebhookController;
+use App\Middleware\AdminMiddleware;
 use League\Route\Router;
 
 /**
@@ -53,6 +55,40 @@ $router->map('GET', '/checkout/confirmation/{uuid:uuid}', [CheckoutController::c
 $router->map('GET', '/account', [AccountController::class, 'index']);
 $router->map('GET', '/account/orders', [AccountController::class, 'orders']);
 $router->map('GET', '/account/orders/{uuid:uuid}', [AccountController::class, 'orderDetail']);
+
+// ============================================
+// ADMIN ROUTES (requires admin role)
+// ============================================
+
+// Admin Dashboard
+$router->map('GET', '/admin', [AdminController::class, 'dashboard'])
+    ->middleware(new AdminMiddleware());
+
+// Admin Products
+$router->map('GET', '/admin/products', [AdminController::class, 'products'])
+    ->middleware(new AdminMiddleware());
+$router->map('GET', '/admin/products/create', [AdminController::class, 'createProduct'])
+    ->middleware(new AdminMiddleware());
+$router->map('POST', '/admin/products', [AdminController::class, 'storeProduct'])
+    ->middleware(new AdminMiddleware());
+$router->map('GET', '/admin/products/{id:number}/edit', [AdminController::class, 'editProduct'])
+    ->middleware(new AdminMiddleware());
+$router->map('POST', '/admin/products/{id:number}', [AdminController::class, 'updateProduct'])
+    ->middleware(new AdminMiddleware());
+$router->map('POST', '/admin/products/{id:number}/delete', [AdminController::class, 'deleteProduct'])
+    ->middleware(new AdminMiddleware());
+
+// Admin Orders
+$router->map('GET', '/admin/orders', [AdminController::class, 'orders'])
+    ->middleware(new AdminMiddleware());
+$router->map('GET', '/admin/orders/{uuid:uuid}', [AdminController::class, 'viewOrder'])
+    ->middleware(new AdminMiddleware());
+$router->map('POST', '/admin/orders/{uuid:uuid}/status', [AdminController::class, 'updateOrderStatus'])
+    ->middleware(new AdminMiddleware());
+
+// ============================================
+// API ROUTES
+// ============================================
 
 // Webhooks
 $router->map('POST', '/webhooks/stripe', [WebhookController::class, 'stripe']);
